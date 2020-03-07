@@ -1,101 +1,50 @@
+#include "Arduino.h"
 #include "Sound.h"
 
-int humCycle;
-long lastHum;
-bool wavDoneMsgSent;
-bool playingSoundEffect;
-bool humPlaying;
-
-AudioGeneratorWAV *wav;
-AudioFileSourceSD *file;
-AudioOutputI2S *out;
-
-void setupSound(void)
+Sound::Sound()
 {
-    out = new AudioOutputI2S(0, 1);
-    wav = new AudioGeneratorWAV();
+  // Only DAC0 for now. (Mono sound)
+  out = new AudioOutputI2S(0, 1);
+  wav = new AudioGeneratorWAV();
 
-    wavDoneMsgSent = false;
-    humCycle = millis() + 1000;
-    Serial.printf("Sound system initiating\n");
-    delay(500);
+  wavDoneMsgSent = false;
 }
 
-bool timeToHum(long period)
+void Sound::play(const char *wavFileName)
 {
-    if (millis() <= (lastHum + period))
-    {
-        return false;
-    }
-    else
-    {
-        lastHum = millis();
-        return true;
-    }
+  playingSoundEffect = true;
+  wavDoneMsgSent = false;
+
+  if (wav->isRunning())
+  {
+    wav->stop();
+    delete file;
+  }
+  file = new AudioFileSourceSD(wavFileName);
+  wav->begin(file, out);
 }
 
-void playSound(const char *wavFileName)
+void Sound::audioLoop(int soundToPlay)
 {
-    playingSoundEffect = true;
-    wavDoneMsgSent = false;
-
-    if ((wavFileName == "/HUM.wav"))
+  if (wav->isRunning())
+  {
+    if (!wav->loop())
     {
-        playingSoundEffect = false;
-        humPlaying = true;
-        Serial.printf("Hum\n");
+      wav->loop();
     }
-    else
+  }
+  else
+  {
+    if (!wavDoneMsgSent)
     {
-        if (wav->isRunning())
-        {
-            wav->stop();
-            delete file;
-            Serial.printf("Sound stopped\n");
-        }
-        Serial.printf("wavFileName");
+      wavDoneMsgSent = true;
+      playingSoundEffect = false;
+      delete file;
     }
-    file = new AudioFileSourceSD(wavFileName);
-    wav->begin(file, out);
+  }
 }
 
-void hum(void)
-{
-    if (!playingSoundEffect)
-    {
-        if (wav->isRunning())
-        {
-            wav->stop();
-            delete file;
-            delay(1);
-            lastHum = millis();
-            playSound("/HUM.wav");
-        }
-    }
-}
-
-void audioLoop(int soundToPlay)
-{
-    if (wav->isRunning())
-    {
-        if (!wav->loop())
-        {
-            wav->loop();
-        }
-    }
-    else
-    {
-        if (!wavDoneMsgSent)
-        {
-            wavDoneMsgSent = true;
-            playingSoundEffect = false;
-            delete file;
-            Serial.printf("WAV done\n");
-        }
-    }
-}
-
-bool soundEffectPlaying(void)
+bool Sound::soundEffectPlaying(void)
 {
     return playingSoundEffect;
 }

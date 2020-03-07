@@ -1,13 +1,28 @@
+#include "Arduino.h"
 #include "AudioFileSourceSD.h"
-#include "AudioGeneratorWAV.h"
+#include "AudiogeneratorWV.h"
 #include "AudioOutputI2S.h"
 
-bool timeToHum(long period);
-void setupSound(void);
-void playSound(const char *wavFileName);
-void hum(void);
-void audioLoop(int soundToPlay);
-bool soundEffectPlaying(void);
+#ifndef Sound_h
+#define Sound_h
+
+class Sound
+{
+  public:
+    void Sound();
+    void play(const char *wavFileName);
+    void audioLoop(int soundToPlay);
+    void soundEffectPlaying(void);
+  private:
+    AudioGeneratorWAV *wav;
+    AudioFileSourceSD *file;
+    AudioOutputI2S *out;
+    bool wavDoneMsgSent;
+    bool playingSoundEffect;
+}
+
+
+#endif
 
 /** Expected wav files are:
  * Sword On sound:
