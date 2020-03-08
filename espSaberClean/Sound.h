@@ -9,7 +9,7 @@
 class Sound
 {
   public:
-    Sound();
+    Sound(int dac);
     void play(const char *wavFileName);
     void audioLoop(int soundToPlay);
     void soundEffectPlaying(void);

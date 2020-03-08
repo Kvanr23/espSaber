@@ -1,10 +1,10 @@
 #include "Arduino.h"
 #include "Sound.h"
 
-Sound::Sound()
+Sound::Sound(int dac)
 {
   // Only DAC0 for now. (Mono sound)
-  out = new AudioOutputI2S(0, 1);
+  out = new AudioOutputI2S(dac, 1);
   wav = new AudioGeneratorWAV();
 
   wavDoneMsgSent = false;
