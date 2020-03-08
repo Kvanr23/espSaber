@@ -1,10 +1,10 @@
-#include "Arduino.h"
-#include "AudioFileSourceSD.h"
-#include "AudiogeneratorWAV.h"
-#include "AudioOutputI2S.h"
-
 #ifndef Sound_h
 #define Sound_h
+
+#include "Arduino.h"
+#include "AudioFileSourceSD.h"
+#include "AudioGeneratorWAV.h"
+#include "AudioOutputI2S.h"
 
 class Sound
 {
@@ -12,15 +12,14 @@ class Sound
     Sound(int dac);
     void play(const char *wavFileName);
     void audioLoop(int soundToPlay);
-    void soundEffectPlaying(void);
+    bool soundEffectPlaying();
   private:
     AudioGeneratorWAV *wav;
     AudioFileSourceSD *file;
     AudioOutputI2S *out;
     bool wavDoneMsgSent;
     bool playingSoundEffect;
-}
-
+};
 
 #endif
 

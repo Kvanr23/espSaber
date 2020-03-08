@@ -44,7 +44,7 @@ void Sound::audioLoop(int soundToPlay)
   }
 }
 
-bool Sound::soundEffectPlaying(void)
+bool Sound::soundEffectPlaying()
 {
     return playingSoundEffect;
 }
