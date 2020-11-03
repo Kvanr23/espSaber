@@ -142,7 +142,3 @@ void turnSaber(bool state) {
     }
   }
 }
-
-void kyloCrackle(int percentage)
-{
-}

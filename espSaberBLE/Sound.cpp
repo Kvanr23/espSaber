@@ -53,7 +53,6 @@ void playSound(const char *wavFileName)
       delete file;
       Serial.printf("Sound stopped\n");
     }
-    Serial.printf("wavFileName");
   }
   file = new AudioFileSourceSD(wavFileName);
   wav->begin(file, out);
