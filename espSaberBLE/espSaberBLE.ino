@@ -1,49 +1,51 @@
 /**
    Includes
 */
-
+// EEPROM
+#include <EEPROM.h>
 // Bluetooth
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
-
+#include <BLE2902.h>
 // FastLED
 #include <FastLED.h>
-
 // Sound
 #include "Sound.h"
-
 
 /**
    Defines
 */
-
+// EEPROM                   Amount of bytes
+#define EEPROM_SIZE         4
 // Bluetooth Low Energy
 #define BT_NAME             "ESP Saber"
-
 #define SERVICE_UUID        "65e90000-4abe-43bf-87c4-cacbae83c5c1"
 #define COLOR_UUID          "65e90001-4abe-43bf-87c4-cacbae83c5c1"
 #define TYPE_UUID           "65e90002-4abe-43bf-87c4-cacbae83c5c1"
-
+#define BatteryService BLEUUID((uint16_t)0x180F)
 // Button
 #define saberBtn            32
-
 // FastLED
 #define NUM_LEDS            60
 #define STRIP_TYPE          WS2812B
 #define RGB_ORDER           GRB
 #define DATA_PIN            2
 
-
 /**
    Variables & constants
 */
-
-// Saber Settings     R     G     B
+// Saber Settings
 byte saberColor[3] = {0x00, 0x00, 0xFF};
 CRGB color = CRGB(255, 0, 0);
 char saberType = 0x01;
-CRGB colorDef = CRGB::Red;
+
+BLECharacteristic *pColorChar;
+BLECharacteristic *pTypeChar;
+BLECharacteristic *pBattChar;
+
+// Battery
+uint8_t battery_level = 57;
 
 // Ledstrip
 CRGB leds[NUM_LEDS];
@@ -55,6 +57,41 @@ TaskHandle_t Task1;
 volatile bool saberState = false;
 volatile bool buttonIsPressed = false;
 
+/**
+ * EEPROM
+ */
+void saveEEPROM() {
+  Serial.println("Saving settings");
+
+  Serial.print("R:");
+  Serial.print(color.r);
+  Serial.print("G:");
+  Serial.print(color.g);
+  Serial.print("B:");
+  Serial.println(color.b);
+  
+  EEPROM.write(0, color.r);
+  EEPROM.write(1, color.g);
+  EEPROM.write(2, color.b);
+  EEPROM.write(3, saberType);
+  EEPROM.commit();
+}
+
+void loadEEPROM() {
+  Serial.println("Loading Settings");
+  uint8_t r = EEPROM.read(0);
+  uint8_t g = EEPROM.read(1);
+  uint8_t b = EEPROM.read(2);
+  Serial.print("R:");
+  Serial.print(r);
+  Serial.print("G:");
+  Serial.print(g);
+  Serial.print("B:");
+  Serial.println(b);
+  color.setRGB(r, g, b);
+  
+  saberType = EEPROM.read(3);
+}
 
 /**
    Callbacks for BLE Characteristics
@@ -70,6 +107,7 @@ class ColorCallbacks: public BLECharacteristicCallbacks {
         for (int i = 0; i < 3; i++) {
           saberColor[i] = value[i];
         }
+        saveEEPROM();
       }
     }
 };
@@ -97,6 +135,7 @@ class TypeCallbacks: public BLECharacteristicCallbacks {
             saberType = 0x01;
             break;
         }
+        saveEEPROM();
       }
     }
 };
@@ -105,7 +144,6 @@ class TypeCallbacks: public BLECharacteristicCallbacks {
 /**
    BLE Functions
 */
-
 // Setup BLE Service and Characteristics
 int setupBLE() {
   // Startup the BLE code and set the name of the device/
@@ -114,40 +152,69 @@ int setupBLE() {
   // Start the BLE server
   BLEServer *pServer = BLEDevice::createServer();
 
-  // Create the a service
+  // Create the services
   BLEService *pService = pServer->createService(SERVICE_UUID);
-
+  BLEService *pBattery = pServer->createService(BatteryService);
+  
   // Create the characteristics inside the service.
   /* Color */
-  BLECharacteristic *pColorChar = pService->createCharacteristic(
+  /*BLECharacteristic* */pColorChar = pService->createCharacteristic(
                                     COLOR_UUID,
                                     BLECharacteristic::PROPERTY_READ |
                                     BLECharacteristic::PROPERTY_WRITE
                                   );
 
   /* Type */
-  BLECharacteristic *pTypeChar = pService->createCharacteristic(
+  /*BLECharacteristic* */pTypeChar = pService->createCharacteristic(
                                    TYPE_UUID,
                                    BLECharacteristic::PROPERTY_READ |
                                    BLECharacteristic::PROPERTY_WRITE
                                  );
+  
+  // Battery level
+  /*BLECharacteristic* */pBattChar = pBattery->createCharacteristic(
+                                   BLEUUID((uint16_t)0x2A19), 
+                                   BLECharacteristic::PROPERTY_READ | 
+                                   BLECharacteristic::PROPERTY_NOTIFY
+                                 );
+  
 
+  pBattChar->addDescriptor(new BLE2902());
+  
   // Set the callbacks for the characteristics
   pColorChar->setCallbacks(new ColorCallbacks());
   pTypeChar->setCallbacks(new TypeCallbacks());
 
   // Set start values.
-  //  pColorChar->setValue(saberColor);
+  pColorChar->setValue(saberColor, 3);
   //  pTypeChar->setValue(saberType);
-
   // TODO: ^ Disabled for now, need to find a way to save a char array.
 
-  // Start the service
+  // Battery level set value for now.
+  pBattChar->setValue(&battery_level, 1);
+  
+  // Start the services
   pService->start();
+  pBattery->start();
 
   // Start advertising
   BLEAdvertising *pAdvertising = pServer->getAdvertising();
   pAdvertising->start();
+}
+
+
+/**
+ * Function to update the value of the characteristics
+ * CRGB value is saved backwards, so we read them in correctly as for updating.
+ */
+void updateCharacteristics() {
+  uint8_t buffer[3];
+  buffer[0] = saberColor[2];
+  buffer[1] = saberColor[1];
+  buffer[2] = saberColor[0];
+  
+  pColorChar->setValue(buffer, 3);
+  pBattChar->setValue(&battery_level, 1);
 }
 
 /**
@@ -157,6 +224,15 @@ void setup()
 {
   // Start Serial
   Serial.begin(9600);
+
+  // Init EEPROM
+  EEPROM.begin(EEPROM_SIZE);
+  loadEEPROM();
+  
+//  Serial.print("Is EEPROM used before: ");
+//  Serial.println(EEPROM.read(4));
+  
+  
   // Start SD connection
   if (!SD.begin(5, SPI, 8000000))
   {
@@ -199,6 +275,7 @@ void loop()
 {
   audioLoop(1);
   buttonFunction();
+  updateCharacteristics();
   delay(1);
 }
 
@@ -207,13 +284,6 @@ void loop()
 */
 void lightingLoop(void * parameters) {
   for (;;) {
-//    bool state = saberState;
-//    bool button = buttonIsPressed;
-//
-//    if (button) {
-//      Serial.println("A");
-//    }
-//    
     if (buttonIsPressed) {
       if (saberState) {
         Serial.println("Saber off");
