@@ -17,7 +17,7 @@ void setupSound(void)
 
   wavDoneMsgSent = false;
   humCycle = millis() + 1000;
-  Serial.printf("Sound system initiating\n");
+  Serial.printf("Sound system initiated\n");
   delay(500);
 }
 
