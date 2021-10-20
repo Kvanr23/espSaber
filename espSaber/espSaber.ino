@@ -34,6 +34,7 @@ void setup()
 {
   // Initialize Serial
   Serial.begin(115200);
+  // Start SD connection
   if (!SD.begin(SD_PIN, SPI, 8000000)) {
     Serial.println("SD Init Failed");
     return;

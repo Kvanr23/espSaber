@@ -11,6 +11,7 @@
 // FastLED
 #include <FastLED.h>
 // Sound
+#include <SD.h>
 #include "Sound.h"
 
 /**
@@ -49,6 +50,9 @@ uint8_t battery_level = 57;
 
 // Ledstrip
 CRGB leds[NUM_LEDS];
+int brightness1 = 250;
+int brightness2 = 200;
+uint8_t hue = 0;
 
 // Dual core
 TaskHandle_t Task1;
@@ -56,6 +60,12 @@ TaskHandle_t Task1;
 // Saber values
 volatile bool saberState = false;
 volatile bool buttonIsPressed = false;
+volatile bool interrupted = false;
+
+// Interrupt method
+void IRAM_ATTR ISR() {
+  interrupted = true;
+}
 
 /**
  * EEPROM
@@ -65,9 +75,9 @@ void saveEEPROM() {
 
   Serial.print("R:");
   Serial.print(color.r);
-  Serial.print("G:");
+  Serial.print(" G:");
   Serial.print(color.g);
-  Serial.print("B:");
+  Serial.print(" B:");
   Serial.println(color.b);
   
   EEPROM.write(0, color.r);
@@ -84,9 +94,9 @@ void loadEEPROM() {
   uint8_t b = EEPROM.read(2);
   Serial.print("R:");
   Serial.print(r);
-  Serial.print("G:");
+  Serial.print(" G:");
   Serial.print(g);
-  Serial.print("B:");
+  Serial.print(" B:");
   Serial.println(b);
   color.setRGB(r, g, b);
   
@@ -146,6 +156,7 @@ class TypeCallbacks: public BLECharacteristicCallbacks {
 */
 // Setup BLE Service and Characteristics
 int setupBLE() {
+  Serial.println("BLE init");
   // Startup the BLE code and set the name of the device/
   BLEDevice::init(BT_NAME);
 
@@ -158,25 +169,28 @@ int setupBLE() {
   
   // Create the characteristics inside the service.
   /* Color */
-  /*BLECharacteristic* */pColorChar = pService->createCharacteristic(
-                                    COLOR_UUID,
-                                    BLECharacteristic::PROPERTY_READ |
-                                    BLECharacteristic::PROPERTY_WRITE
-                                  );
+  /*BLECharacteristic* */
+  pColorChar = pService->createCharacteristic(
+    COLOR_UUID,
+    BLECharacteristic::PROPERTY_READ |
+    BLECharacteristic::PROPERTY_WRITE
+  );
 
   /* Type */
-  /*BLECharacteristic* */pTypeChar = pService->createCharacteristic(
-                                   TYPE_UUID,
-                                   BLECharacteristic::PROPERTY_READ |
-                                   BLECharacteristic::PROPERTY_WRITE
-                                 );
-  
+  /*BLECharacteristic* */
+  pTypeChar = pService->createCharacteristic(
+    TYPE_UUID,
+    BLECharacteristic::PROPERTY_READ |
+    BLECharacteristic::PROPERTY_WRITE
+  );
+
   // Battery level
-  /*BLECharacteristic* */pBattChar = pBattery->createCharacteristic(
-                                   BLEUUID((uint16_t)0x2A19), 
-                                   BLECharacteristic::PROPERTY_READ | 
-                                   BLECharacteristic::PROPERTY_NOTIFY
-                                 );
+  /*BLECharacteristic* */
+  pBattChar = pBattery->createCharacteristic(
+    BLEUUID((uint16_t)0x2A19), 
+    BLECharacteristic::PROPERTY_READ | 
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
   
 
   pBattChar->addDescriptor(new BLE2902());
@@ -223,7 +237,12 @@ void updateCharacteristics() {
 void setup()
 {
   // Start Serial
-  Serial.begin(9600);
+  Serial.begin(115200);
+  // Start SD connection
+  if (!SD.begin(5, SPI, 8000000)) {
+    Serial.println("SD Failed");
+    return;
+  }
 
   // Init EEPROM
   EEPROM.begin(EEPROM_SIZE);
@@ -231,34 +250,23 @@ void setup()
   
 //  Serial.print("Is EEPROM used before: ");
 //  Serial.println(EEPROM.read(4));
-  
-  
-  // Start SD connection
-  if (!SD.begin(5, SPI, 8000000))
-  {
-    Serial.println("SD Failed");
-    return;
-  }
 
+  // Set pinmode of button
+  pinMode(saberBtn, INPUT);
+  // Attach interrupt to button
+  attachInterrupt(saberBtn, ISR, RISING);
+  // Setup sound
+  setupSound();
   // Add Strip
   FastLED.addLeds<STRIP_TYPE, DATA_PIN, RGB_ORDER>(leds, NUM_LEDS);
   // Turn off all leds right away
   turnSaber(0);
-
-  delay(100);
-  // Setup sound
-  setupSound();
-  delay(100);
-
-  // Pinmodes
-  pinMode(saberBtn, INPUT_PULLDOWN);
-
   // Setup BLE
   setupBLE();
 
   // Start task on second core
   xTaskCreatePinnedToCore(
-    lightingLoop,
+    loop2,
     "Task1",
     10000,
     NULL,
@@ -273,28 +281,30 @@ void setup()
 */
 void loop()
 {
-  audioLoop(1);
+  audioLoop(0);
   buttonFunction();
   updateCharacteristics();
-  delay(1);
 }
 
 /**
    Loop for lighting
 */
-void lightingLoop(void * parameters) {
+void loop2(void * parameters) {
   for (;;) {
     if (buttonIsPressed) {
+      Serial.println("BUTTON");
       if (saberState) {
-        Serial.println("Saber off");
-        turnSaber(0);
-        buttonIsPressed = false;
-      }
-      else if (!saberState) {
-        Serial.println("Saber on");
         turnSaber(1);
         buttonIsPressed = false;
       }
+      else if (!saberState) {
+        turnSaber(0);
+        buttonIsPressed = false;
+      }
+    }
+
+    if (saberState) {
+      kyloPulse();
     }
   }
 }
@@ -310,15 +320,14 @@ void buttonFunction(void)
     if (saberState)
     {
       buttonIsPressed = true;
-      playSound("/OFF.wav");
       saberState = false;
+      playSound("/OFF.wav");
     }
     else if (!saberState)
     {
       buttonIsPressed = true;
-      playSound("/ON.wav");
-
       saberState = true;
+      playSound("/ON.wav");
     }
   }
 }
@@ -352,11 +361,20 @@ void turnSaber(bool state) {
   Serial.println("turnSaber");
   if (state)
   {
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-      // Use color we defined at the top, which can be changed with BLE.
-      leds[i] = color;
-      FastLED.show();
+//    for (int i = 0; i < NUM_LEDS; i++)
+//    {
+//      // Use color we defined at the top, which can be changed with BLE.
+//      leds[i] = color;
+//      FastLED.show();
+//    }
+    int brightness = 1;
+    for (int j = 50; j < 256; j = j + 50) {
+      Serial.println(j);
+      for (int i = 0; i < NUM_LEDS; i++)
+      {
+        leds[i] = CHSV(hue, 255, j); // TODO: turn RGB into HSV from ble
+        FastLED.show();
+      }
     }
   }
   else if (!state)
@@ -367,5 +385,25 @@ void turnSaber(bool state) {
       FastLED.show();
       FastLED.delay(1);
     }
+  }
+}
+
+void kyloPulse() {
+  for (int i = 0; i < NUM_LEDS; i++)
+  {
+    if (interrupted) {
+      interrupted = false;
+      break;
+    }
+    leds[i] = CHSV(hue, 255, brightness1);
+  }
+  for (int i = 0; i < NUM_LEDS; i++)
+  {
+    if (interrupted) {
+      interrupted = false;
+      break;
+    }
+    leds[i] = CHSV(hue, 255, brightness2);
+    FastLED.show();
   }
 }
