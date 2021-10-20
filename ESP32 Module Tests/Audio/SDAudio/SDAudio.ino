@@ -13,7 +13,7 @@ void setup() {
     Serial.println("SD Init Failed");
     return;
   }
-  pinMode(saberBtn, INPUT);
+  pinMode(saberBtn, INPUT_PULLUP);
   setupSound();
 }
 
@@ -36,8 +36,7 @@ void buttonFunction(void)
     else if (!saberState)
     {
       buttonIsPressed = true;
-      playSound("/ON.wav");
-
+      playSound("/SaberOn.wav");
       saberState = true;
     }
   }

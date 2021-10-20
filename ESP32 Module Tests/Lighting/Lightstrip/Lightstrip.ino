@@ -46,7 +46,7 @@ void loop() {
   }
   
   if (saberState) {
-    kyloPulse();
+    
   }
 //  hue++;
 //  Serial.println(hue);
@@ -99,9 +99,9 @@ void turnSaber(bool state) {
       Serial.println(j);
       for (int i = 0; i < NUM_LEDS; i++)
       {
-  //      leds[i].r = 255;
+        leds[i].r = 255;
   //      leds[i].setRGB(255, 0, 0);
-        leds[i] = CHSV(hue, 255, j);
+//        leds[i] = CHSV(hue, 255, 255);
         FastLED.show();
 //        FastLED.delay(1);
       }
@@ -117,24 +117,4 @@ void turnSaber(bool state) {
       FastLED.delay(1);
     }
   }
-}
-
-void kyloPulse() {
-  for (int i = 0; i < NUM_LEDS; i++)
-    {
-      if (interrupted) {
-        interrupted = false;
-        break;
-      }
-      leds[i] = CHSV(hue, 255, brightness1);
-    }
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-      if (interrupted) {
-        interrupted = false;
-        break;
-      }
-      leds[i] = CHSV(hue, 255, brightness2);
-      FastLED.show();
-    }
 }

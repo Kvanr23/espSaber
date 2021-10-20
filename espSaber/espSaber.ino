@@ -1,8 +1,10 @@
-#include <WiFi.h>
+// Includes
 #include <FastLED.h>
-
+#include <SD.h>
 #include "Sound.h"
 
+// Defines
+#define SD_PIN 5
 #define saberBtn 32
 
 #define NUM_LEDS 60
@@ -10,39 +12,43 @@
 #define RGB_ORDER GRB
 #define DATA_PIN 2
 
+// Variables
 CRGB leds[NUM_LEDS];
+int brightness1 = 250;
+int brightness2 = 200;
+uint8_t hue = 0;
 
-// Dual core
+volatile bool saberState = false;
+volatile bool buttonIsPressed = false;
+volatile bool interrupted = false;
+
+// Dual core task
 TaskHandle_t Task1;
 
-long period = 250;
+// Interrupt method
+void IRAM_ATTR ISR() {
+  interrupted = true;
+}
 
 void setup()
 {
-  // Start Serial
+  // Initialize Serial
   Serial.begin(115200);
-  // Start SD connection
-  if (!SD.begin(5, SPI, 8000000))
-  {
-    Serial.println("SD Failed");
+  if (!SD.begin(SD_PIN, SPI, 8000000)) {
+    Serial.println("SD Init Failed");
     return;
   }
-
-  // Add Strip
-  FastLED.addLeds<STRIP_TYPE, DATA_PIN, RGB_ORDER>(leds, NUM_LEDS);
-  // Turn off all leds right away
-  turnSaber(0);
-
-  delay(100);
+  // Set pinmode of button
+  pinMode(saberBtn, INPUT);
+  // Attach interrupt to button
+  attachInterrupt(saberBtn, ISR, RISING);
   // Setup sound
   setupSound();
-  delay(100);
-
-  // Pinmodes
-  pinMode(saberBtn, INPUT_PULLDOWN);
-
+  // Setup ledstrip
+  FastLED.addLeds<STRIP_TYPE, DATA_PIN, RGB_ORDER>(leds, NUM_LEDS);
+  // Setup second core
   xTaskCreatePinnedToCore(
-    lightingLoop,
+    loop2,
     "Task1",
     10000,
     NULL,
@@ -52,31 +58,28 @@ void setup()
   );
 }
 
-bool saberState = false;
-
 void loop()
 {
-  audioLoop(1);
+  audioLoop(0);
   buttonFunction();
-  delay(1);
 }
 
-bool buttonIsPressed = false;
-
-void lightingLoop(void * parameters) {
+void loop2(void * parameters) {
   for (;;) {
-    Serial.println("TEST");
     if (buttonIsPressed) {
       Serial.println("BUTTON");
       if (saberState) {
-        Serial.println("SABER ON");
-        turnSaber(0);
-        buttonIsPressed = false;
-      }
-      else if (!saberState) {
         turnSaber(1);
         buttonIsPressed = false;
       }
+      else if (!saberState) {
+        turnSaber(0);
+        buttonIsPressed = false;
+      }
+    }
+
+    if (saberState) {
+      kyloPulse();
     }
   }
 }
@@ -85,20 +88,18 @@ void buttonFunction(void)
 {
   if (debounce(saberBtn, 20) && !soundEffectPlaying())
   {
+    Serial.println("Button is pressed");
     if (saberState)
     {
       buttonIsPressed = true;
-//      turnSaber(0);
-      playSound("/OFF.wav");
       saberState = false;
+      playSound("/OFF.wav");
     }
     else if (!saberState)
     {
       buttonIsPressed = true;
-//      turnSaber(1);
-      playSound("/ON.wav");
-
       saberState = true;
+      playSound("/ON.wav");
     }
   }
 }
@@ -123,13 +124,18 @@ boolean debounce(int pin, int debounceDelay)
 }
 
 void turnSaber(bool state) {
+  Serial.print("Turnsaber: ");
+  Serial.println(state);
   if (state)
   {
-    for (int i = 0; i < NUM_LEDS; i++)
-    {
-      leds[i].r = 255;
-      FastLED.show();
-//      FastLED.delay(1);0
+    int brightness = 1;
+    for (int j = 50; j < 256; j = j + 50) {
+      Serial.println(j);
+      for (int i = 0; i < NUM_LEDS; i++)
+      {
+        leds[i] = CHSV(hue, 255, j);
+        FastLED.show();
+      }
     }
   }
   else if (!state)
@@ -140,5 +146,25 @@ void turnSaber(bool state) {
       FastLED.show();
       FastLED.delay(1);
     }
+  }
+}
+
+void kyloPulse() {
+  for (int i = 0; i < NUM_LEDS; i++)
+  {
+    if (interrupted) {
+      interrupted = false;
+      break;
+    }
+    leds[i] = CHSV(hue, 255, brightness1);
+  }
+  for (int i = 0; i < NUM_LEDS; i++)
+  {
+    if (interrupted) {
+      interrupted = false;
+      break;
+    }
+    leds[i] = CHSV(hue, 255, brightness2);
+    FastLED.show();
   }
 }

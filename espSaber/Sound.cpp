@@ -17,7 +17,7 @@ void setupSound(void)
 
   wavDoneMsgSent = false;
   humCycle = millis() + 1000;
-  Serial.printf("Sound system initiating\n");
+  Serial.printf("Sound system initiated\n");
   delay(500);
 }
 
@@ -53,7 +53,6 @@ void playSound(const char *wavFileName)
       delete file;
       Serial.printf("Sound stopped\n");
     }
-    Serial.printf("wavFileName");
   }
   file = new AudioFileSourceSD(wavFileName);
   wav->begin(file, out);
