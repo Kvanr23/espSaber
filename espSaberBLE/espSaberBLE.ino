@@ -5,8 +5,8 @@
 #include <EEPROM.h>
 // Bluetooth
 #include <BLEDevice.h>
-#include <BLEUtils.h>
 #include <BLEServer.h>
+#include <BLEUtils.h>
 #include <BLE2902.h>
 // FastLED
 #include <FastLED.h>
@@ -19,14 +19,17 @@
 */
 // EEPROM                   Amount of bytes
 #define EEPROM_SIZE         4
+
 // Bluetooth Low Energy
 #define BT_NAME             "ESP Saber"
 #define SERVICE_UUID        "65e90000-4abe-43bf-87c4-cacbae83c5c1"
 #define COLOR_UUID          "65e90001-4abe-43bf-87c4-cacbae83c5c1"
 #define TYPE_UUID           "65e90002-4abe-43bf-87c4-cacbae83c5c1"
 #define BatteryService BLEUUID((uint16_t)0x180F)
+
 // Button
 #define saberBtn            32
+
 // FastLED
 #define NUM_LEDS            60
 #define STRIP_TYPE          WS2812B
@@ -39,11 +42,16 @@
 // Saber Settings
 byte saberColor[3] = {0x00, 0x00, 0xFF};
 CRGB color = CRGB(255, 0, 0);
+CHSV colorHue = rgb2hsv_approximate(color);
 char saberType = 0x01;
 
-BLECharacteristic *pColorChar;
-BLECharacteristic *pTypeChar;
-BLECharacteristic *pBattChar;
+// Bluetooth Low Energy
+BLEServer* pServer = NULL;
+BLECharacteristic *pColorChar = NULL;
+BLECharacteristic *pTypeChar = NULL;
+BLECharacteristic *pBattChar = NULL;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
 
 // Battery
 uint8_t battery_level = 57;
@@ -106,6 +114,16 @@ void loadEEPROM() {
 /**
    Callbacks for BLE Characteristics
 */
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+      BLEDevice::startAdvertising();
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
 
 // Saber Color Characteristic
 class ColorCallbacks: public BLECharacteristicCallbacks {
@@ -113,7 +131,8 @@ class ColorCallbacks: public BLECharacteristicCallbacks {
       std::string value = pCharacteristic->getValue();
 
       if (value.length() > 0) {
-        color = CRGB(value[0],value[1], value[2]);
+        color = CRGB(value[1],value[0], value[2]);
+        colorHue = rgb2hsv_approximate(color);
         for (int i = 0; i < 3; i++) {
           saberColor[i] = value[i];
         }
@@ -150,7 +169,6 @@ class TypeCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-
 /**
    BLE Functions
 */
@@ -159,9 +177,9 @@ int setupBLE() {
   Serial.println("BLE init");
   // Startup the BLE code and set the name of the device/
   BLEDevice::init(BT_NAME);
-
   // Start the BLE server
-  BLEServer *pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
   // Create the services
   BLEService *pService = pServer->createService(SERVICE_UUID);
@@ -212,8 +230,11 @@ int setupBLE() {
   pBattery->start();
 
   // Start advertising
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
-  pAdvertising->start();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(false);
+  BLEDevice::startAdvertising();
+  Serial.println("Started advertising");
 }
 
 
@@ -368,11 +389,17 @@ void turnSaber(bool state) {
 //      FastLED.show();
 //    }
     int brightness = 1;
+    Serial.print("Hue: ");
+    Serial.println(colorHue.h);
     for (int j = 50; j < 256; j = j + 50) {
-      Serial.println(j);
       for (int i = 0; i < NUM_LEDS; i++)
       {
-        leds[i] = CHSV(hue, 255, j); // TODO: turn RGB into HSV from ble
+        leds[i] = color;
+//        colorHue = rgb2hsv_approximate(color);
+//        colorHue.v = j;
+//        leds[i] = colorHue;
+////        leds[i] = CHSV(hue, 255, j); // TODO: turn RGB into HSV from ble
+//        
         FastLED.show();
       }
     }
@@ -395,7 +422,10 @@ void kyloPulse() {
       interrupted = false;
       break;
     }
-    leds[i] = CHSV(hue, 255, brightness1);
+//    leds[i] = CHSV(hue, 255, brightness1);
+    colorHue = rgb2hsv_approximate(color);
+    colorHue.v = brightness1;
+    leds[i] = colorHue;
   }
   for (int i = 0; i < NUM_LEDS; i++)
   {
@@ -403,7 +433,11 @@ void kyloPulse() {
       interrupted = false;
       break;
     }
-    leds[i] = CHSV(hue, 255, brightness2);
+//    leds[i] = CHSV(hue, 255, brightness2);
+    colorHue = rgb2hsv_approximate(color);
+    colorHue.v = brightness2;
+    leds[i] = colorHue;
+    
     FastLED.show();
   }
 }
