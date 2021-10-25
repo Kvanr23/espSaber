@@ -128,13 +128,18 @@ class MyServerCallbacks: public BLEServerCallbacks {
 // Saber Color Characteristic
 class ColorCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
+      Serial.println("Color update!");
       std::string value = pCharacteristic->getValue();
 
       if (value.length() > 0) {
-        color = CRGB(value[1],value[0], value[2]);
+        color = CRGB(value[0],value[1], value[2]);
         colorHue = rgb2hsv_approximate(color);
         for (int i = 0; i < 3; i++) {
-          saberColor[i] = value[i];
+          if (value[i] == 0x00) {
+            value[i] = 0x01;
+          } else {
+            saberColor[i] = value[i];
+          }
         }
         saveEEPROM();
       }
@@ -391,15 +396,14 @@ void turnSaber(bool state) {
     int brightness = 1;
     Serial.print("Hue: ");
     Serial.println(colorHue.h);
-    for (int j = 50; j < 256; j = j + 50) {
+    for (int j = 1; j < 256; j = j + 75) {
       for (int i = 0; i < NUM_LEDS; i++)
       {
-        leds[i] = color;
-//        colorHue = rgb2hsv_approximate(color);
-//        colorHue.v = j;
-//        leds[i] = colorHue;
-////        leds[i] = CHSV(hue, 255, j); // TODO: turn RGB into HSV from ble
-//        
+//        leds[i] = color;
+        colorHue = rgb2hsv_approximate(color);
+        colorHue.v = j;
+        leds[i] = colorHue;
+        
         FastLED.show();
       }
     }
