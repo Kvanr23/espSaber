@@ -479,8 +479,8 @@ bool swingTick() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
   m = {a.acceleration.x, a.acceleration.y, a.acceleration.z, g.gyro.x, g.gyro.y, g.gyro.z};
-  if (millis() >= lastSwing + timeout && !saberState && !soundEffectPlaying()) {
-    //    Serial.println("Swing tick");
+  if (millis() >= lastSwing + timeout && saberState && !soundEffectPlaying()) {
+//    Serial.println("Swing tick");
     if (m.ax >= 20 || m.ay >= 20 || m.az >= 20 || m.ax <= -20 || m.ay <= -20 || m.az <= -20) {
       playSound(SwingSounds[random(0, 8)]);
       lastSwing = millis();
