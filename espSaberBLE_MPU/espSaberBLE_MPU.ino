@@ -3,6 +3,8 @@
 */
 // EEPROM
 #include <EEPROM.h>
+// ESP32 ADC
+#include <driver/adc.h>
 // Bluetooth
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -33,6 +35,9 @@
 
 // Button
 #define saberBtn            32
+
+// Batterylevel
+#define batteryPin          34
 
 // FastLED
 #define NUM_LEDS            60
@@ -73,6 +78,9 @@ bool oldDeviceConnected = false;
 
 // Battery
 uint8_t battery_level = 57;
+int batterySum = 0;
+int batteryAvg = 0;
+int batteryMeasurement = 0;
 
 // Ledstrip
 CRGB leds[NUM_LEDS];
@@ -287,6 +295,32 @@ void updateCharacteristics() {
   pColorChar->setValue(buffer, 3);
   pBattChar->setValue(&battery_level, 1);
 }
+
+/**
+   Check Battery
+*/
+void checkBattery() {
+  int measure = adc1_get_raw(ADC1_CHANNEL_6);
+  float voltage = (1.5/4095.0) * measure * 8.5;
+  int millivolts = voltage * 1000;
+  int constrained = constrain(millivolts, 5600, 8400);
+  int percentage = map(constrained, 6000, 8400, 0, 100);  
+  
+  if (batteryAvg == 0) {
+    batteryAvg = percentage;
+    batterySum = percentage;
+  } else {
+    batterySum += percentage;
+    batteryAvg = batterySum / 2;
+    batterySum = batteryAvg;
+  }
+  
+  battery_level = batteryAvg;
+  if (battery_level < 10) {
+    Serial.println("Battery Low!");
+  }
+}
+
 /**
    Setup Motion
 */
@@ -324,6 +358,9 @@ void setup()
 
   // Init Motion
   setupMotion();
+  // Set pinmode of batterylevel
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_0);
 
   // Set pinmode of button
   pinMode(saberBtn, INPUT);
@@ -353,10 +390,16 @@ void setup()
 /**
    Loop
 */
+long elapsed = 0;
+int interval = 5000;
 void loop()
 {
   audioLoop(0);
   buttonFunction();
+  if (millis() > (elapsed + interval)) {
+    checkBattery();
+    elapsed = millis();
+  }
   updateCharacteristics();
   swingTick();
 }
@@ -430,14 +473,14 @@ boolean debounce(int pin, int debounceDelay)
 }
 
 /**
- * Swing Tick
- */
+   Swing Tick
+*/
 bool swingTick() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
   m = {a.acceleration.x, a.acceleration.y, a.acceleration.z, g.gyro.x, g.gyro.y, g.gyro.z};
   if (millis() >= lastSwing + timeout && !saberState && !soundEffectPlaying()) {
-    Serial.println("Swing tick");
+    //    Serial.println("Swing tick");
     if (m.ax >= 20 || m.ay >= 20 || m.az >= 20 || m.ax <= -20 || m.ay <= -20 || m.az <= -20) {
       playSound(SwingSounds[random(0, 8)]);
       lastSwing = millis();
